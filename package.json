@@ -1,0 +1,1 @@
+{"name":"campus-errands","private":true,"type":"module","version":"0.1.0","scripts":{"start":"node server.mjs","test":"node --test test.mjs","check":"node --check app.mjs && node --check domain.mjs"},"devDependencies":{"jsdom":"^30.1.3"}}
