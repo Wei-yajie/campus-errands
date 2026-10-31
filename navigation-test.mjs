@@ -1,0 +1,41 @@
+import {JSDOM} from 'jsdom';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {seed,act} from './domain.mjs';
+
+const s=seed();
+act(s,'accept','t2');act(s,'deliver','t2',{actual:2700,proof:true});
+s.user='lin';act(s,'confirm','t2');act(s,'cancel','t5');
+s.user='chen';act(s,'accept','t1');act(s,'accept','t4');act(s,'deliver','t4',{proof:true});
+act(s,'accept','t3');act(s,'dispute','t3',{reason:'交付地点需确认'});
+s.tasks.push({...s.tasks.find(t=>t.id==='t6'),id:'expired',due:'2026-10-30T12:00:00+08:00'});
+s.tasks.push({...s.tasks.find(t=>t.id==='t2'),id:'other',owner:'xu',runner:'zhou'});
+const dom=new JSDOM(fs.readFileSync('index.html','utf8'),{url:'https://example.test/campus-errands/'});
+const w=dom.window;
+Object.assign(globalThis,{window:w,document:w.document,location:w.location,localStorage:w.localStorage,FormData:w.FormData});
+w.scrollTo=()=>{};
+localStorage.setItem('shunlu-demo-v1',JSON.stringify(s));
+await import('./app.mjs');
+const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
+const cards=()=>document.querySelectorAll('.task-card');
+async function hall(){location.hash='hall';await tick();}
+assert.deepEqual([...document.querySelectorAll('.stat-link strong')].map(n=>parseInt(n.textContent)),[1,3,1]);
+const links=[...document.querySelectorAll('.stat-link')];
+assert.equal(links.length,3);assert.ok(links.every(a=>a.tagName==='A'&&a.getAttribute('aria-label')));
+links[0].click();await tick();assert.equal(location.hash,'#waiting');assert.equal(cards().length,1);
+assert.match(document.querySelector('h1').textContent,/正在等/);
+await hall();document.querySelectorAll('.stat-link')[1].click();await tick();
+assert.equal(cards().length,3);assert.equal(document.querySelector('[data-orderfilter].active').textContent,'进行中');
+assert.ok([...cards()].every(c=>!c.textContent.includes('已完成')&&!c.textContent.includes('已退款')));
+w.dispatchEvent(new w.Event('hashchange'));assert.equal(cards().length,3);
+await hall();document.querySelectorAll('.stat-link')[2].click();await tick();
+assert.equal(cards().length,1);assert.equal(document.querySelector('[data-orderfilter].active').textContent,'已完成');
+assert.match(cards()[0].textContent,/咖啡/);
+document.querySelector('[data-orderfilter="已结束"]').click();await tick();assert.equal(cards().length,1);
+const select=document.querySelector('#role');select.value='lin';select.dispatchEvent(new w.Event('change',{bubbles:true}));
+assert.equal(cards().length,2); // 普通“已结束”包括退款；“已完成”快捷入口不包括。
+await hall();document.querySelectorAll('.stat-link')[2].click();await tick();assert.equal(cards().length,1);
+const role=document.querySelector('#role');role.value='admin';role.dispatchEvent(new w.Event('change',{bubbles:true}));
+assert.equal(cards().length,0);assert.match(document.querySelector('.empty').textContent,/没有订单/);
+console.log('Navigation passed: all three links, matching counts, status filters, user scope, empty state and hash restoration.');
+w.close();
